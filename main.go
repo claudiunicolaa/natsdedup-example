@@ -47,7 +47,7 @@ func main() {
 
 	// Create a list of items to deduplicate
 	log.Println("Creating items...")
-	items := setup(size)
+	items := dataSetup(size)
 	log.Printf("Created %d items\n", size)
 
 	// Start a subscriber to the output subject in a goroutine
@@ -107,7 +107,7 @@ func main() {
 	select {}
 }
 
-func setup(size int) []*item {
+func dataSetup(size int) []*item {
 	items := make([]*item, size)
 	for i := 0; i < size; i++ {
 		items[i] = &item{
