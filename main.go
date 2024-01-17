@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"strconv"
 	"time"
@@ -16,7 +17,15 @@ const (
 	subjectOut = "output"
 	// TTL for the deduplicator
 	ttl = 1 * time.Minute
+	// Number of items to publish
+	size = 100000
 )
+
+type item struct {
+	ID  int    `json:"id"`
+	Key string `json:"key"`
+	Val string `json:"val"`
+}
 
 func main() {
 	// Connect to a NATS server
@@ -34,34 +43,50 @@ func main() {
 	// Start the deduplicator in a goroutine
 	log.Println("Starting deduplicator...")
 	go dedup.Run(nc)
+	log.Println("Deduplicator started")
 
 	// Create a list of items to deduplicate
-	size := 100
-	items := make([]string, size)
+	log.Println("Creating items...")
+	items := make([]item, size)
 	for i := 0; i < size; i++ {
-		items[i] = "item" + strconv.Itoa(i)
+		items[i] = item{
+			ID:  i,
+			Key: "key" + strconv.Itoa(i),
+			Val: "val" + strconv.Itoa(i),
+		}
 	}
+	log.Printf("Created %d items\n", size)
 
 	// Start a subscriber to the output subject in a goroutine
-	var storage []string
+	log.Println("Starting subscriber to output subject...")
+	var storage []item
 	go func() {
-		log.Println("Starting subscriber to output subject...")
 		_, err := nc.Subscribe(subjectOut, func(m *nats.Msg) {
-			storage = append(storage, string(m.Data))
+			var newItem item
+			err := json.Unmarshal(m.Data, &newItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			storage = append(storage, newItem)
 		})
 		if err != nil {
 			log.Fatal(err)
 		}
 	}()
+	log.Println("Subscriber started")
 
 	// Start a publisher to the input subject in a goroutine
+	log.Println("Starting publisher to input subject...")
 	go func() {
-		log.Println("Starting publisher to input subject...")
 		times := 2
 		for i := 0; i < times; i++ {
 			// Publish the list of items to the input subject
 			for _, item := range items {
-				err := nc.Publish(subjectIn, []byte(item))
+				itemBytes, err := json.Marshal(item)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = nc.Publish(subjectIn, itemBytes)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -77,11 +102,13 @@ func main() {
 		}
 		for i := 0; i < size; i++ {
 			if storage[i] != items[i] {
-				log.Fatalf("Expected %s, got %s\n", items[i], storage[i])
+				log.Fatalf("Expected %v, got %v\n", items[i], storage[i])
 			}
 		}
 	}()
+	log.Println("Publisher started")
 
+	log.Println("Waiting for messages...")
 	// Keep the connection alive until the program is terminated
 	select {}
 }
