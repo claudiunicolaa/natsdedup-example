@@ -47,22 +47,15 @@ func main() {
 
 	// Create a list of items to deduplicate
 	log.Println("Creating items...")
-	items := make([]item, size)
-	for i := 0; i < size; i++ {
-		items[i] = item{
-			ID:  i,
-			Key: "key" + strconv.Itoa(i),
-			Val: "val" + strconv.Itoa(i),
-		}
-	}
+	items := setup(size)
 	log.Printf("Created %d items\n", size)
 
 	// Start a subscriber to the output subject in a goroutine
 	log.Println("Starting subscriber to output subject...")
-	var storage []item
+	var storage []*item
 	go func() {
 		_, err := nc.Subscribe(subjectOut, func(m *nats.Msg) {
-			var newItem item
+			var newItem *item
 			err := json.Unmarshal(m.Data, &newItem)
 			if err != nil {
 				log.Fatal(err)
@@ -101,14 +94,28 @@ func main() {
 			log.Fatalf("Expected %d items, got %d\n", size, len(storage))
 		}
 		for i := 0; i < size; i++ {
-			if storage[i] != items[i] {
+			if storage[i].ID != items[i].ID {
 				log.Fatalf("Expected %v, got %v\n", items[i], storage[i])
 			}
 		}
+		log.Println("All items received correctly")
 	}()
 	log.Println("Publisher started")
 
 	log.Println("Waiting for messages...")
 	// Keep the connection alive until the program is terminated
 	select {}
+}
+
+func setup(size int) []*item {
+	items := make([]*item, size)
+	for i := 0; i < size; i++ {
+		items[i] = &item{
+			ID:  i,
+			Key: "key" + strconv.Itoa(i),
+			Val: "val" + strconv.Itoa(i),
+		}
+	}
+
+	return items
 }
